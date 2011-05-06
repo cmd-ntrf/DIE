@@ -1,0 +1,14 @@
+DIE - Dungeon Intelligently Escaped
+-----------------------------------
+
+
+ToDo
+----
+* Write a proper README
+
+
+Requirements
+------------
+* Python >=2.6
+* Paramiko (easy_install/pip paramiko)
+
