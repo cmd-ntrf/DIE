@@ -1,10 +1,13 @@
 DIE - Dungeon Intelligently Escaped
 -----------------------------------
 
+Remarks: If it hangs, kill it with:
+ps aux | grep python | grep "ai.py" | awk '{print $2}' | xargs kill -9
 
 ToDo
 ----
 * Write a proper README
+* Make it work for 0.8.0 (Unsupported Character 15?)
 
 
 Requirements
