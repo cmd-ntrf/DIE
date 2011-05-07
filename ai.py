@@ -9,6 +9,8 @@ import sys
 
 FORCE_REFRESH = 10
 RECV_BUFF = 9999
+SLEEP_BETWEEN_ACTIONS = 0.8
+SLEEP_BETWEEN_REFRESH = 1.5
 
 PLAYER_NAME = 'xuvaros'
 PLAYER_PASSWORD = 'poussin'
@@ -41,9 +43,11 @@ class crawlgame(object):
         return self.chan
 
     def pompe_screen(self):
+        """Pompe les events graphiques, permet de ne pas fuller le buffer de SSH"""
         self.extract_vision()
 
     def recv_checkpoint(self, phrase):
+        """Pompe les events graphique jusqu'une phrase precise soit trouvee"""
         ss_ecran = self.extract_vision()
         if phrase in ss_ecran:
             return ss_ecran
@@ -58,26 +62,26 @@ class crawlgame(object):
         self.chan.sendall('l')
         self.chan.sendall('%s\n' % PLAYER_NAME)
         self.chan.sendall('%s\n' % PLAYER_PASSWORD)
-        time.sleep(0.5)
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
         self.pompe_screen()
-        time.sleep(1)
-        self.chan.sendall('1p') # play now!
-        time.sleep(0.5)
+        time.sleep(SLEEP_BETWEEN_REFRESH)
+        self.chan.sendall('1') # play now!
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
+        self.chan.sendall('p')
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
 
     def create_perso(self):
-        time.sleep(0.5)
+        time.sleep(SLEEP_BETWEEN_REFRESH)
         if self.recv_checkpoint("Please select your species.") == None:
             return -1
-        self.chan.sendall('od') # Troll Berserker
-        with open('./debug1.txt', 'wb') as fichier:
-            while self.chan.recv_ready():
-                buffer = self.chan.recv(RECV_BUFF)
-                fichier.write(buffer)
-                time.sleep(2)
+        self.chan.sendall('o') # Troll
+        time.sleep(SLEEP_BETWEEN_REFRESH)
+        self.chan.sendall('h') # Berserker
+        time.sleep(SLEEP_BETWEEN_REFRESH)
 
     def jouer(self):
         # Delay lorsqu'on part
-        time.sleep(1)
+        time.sleep(SLEEP_BETWEEN_REFRESH)
         ticks = 0
         test_bouffe = False
         while True:
@@ -85,7 +89,7 @@ class crawlgame(object):
                 # Envoyer un force refresh
                 self.chan.sendall('\x12')
                 test_bouffe = True
-            time.sleep(0.5)
+            time.sleep(SLEEP_BETWEEN_ACTIONS)
             ecran = self.extract_vision()
             if DEBUG:
                 print(ecran)
