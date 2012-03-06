@@ -6,6 +6,10 @@ import time
 import re
 from lib import TermEmulator
 import sys
+import fcntl
+import os
+import termios
+import curses
 
 FORCE_REFRESH = 10
 RECV_BUFF = 9999
@@ -17,6 +21,11 @@ PLAYER_PASSWORD = 'poussin'
 
 DEBUG = True
 
+ennemy_symbols = 'abcdefghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOQRSTUVWXYZ'
+
+UNWALKABLE = ['#', ' ', '`']
+
+
 class character:
     health = -1
     maxhealth = -1
@@ -24,14 +33,15 @@ class character:
     maxmagic = -1
 
 class crawlgame(object):
-    def __init__(self):
+    def __init__(self, in_scr):
         self.gamehdl = paramiko.SSHClient()
         self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=5)
         self.chan = self.gamehdl.invoke_shell()
         # Initialise the character variables
         self.char = character()
-        self.screen = TermEmulator.V102Terminal(24,80)
+        self.screen = TermEmulator.V102Terminal(30,100)
+        self.stdscr = in_scr
        
     def __del__(self):
         self.close()
@@ -53,10 +63,8 @@ class crawlgame(object):
             return ss_ecran
         else:
             return None
-        
 
-
-    def log(self):
+    def log_into_game(self):
         if self.recv_checkpoint("Not logged in.") == None:
             return -1
         self.chan.sendall('l')
@@ -72,9 +80,10 @@ class crawlgame(object):
 
     def create_perso(self):
         time.sleep(SLEEP_BETWEEN_REFRESH)
+        # Verify if character is already created or not
         if self.recv_checkpoint("Please select your species.") == None:
             return -1
-        self.chan.sendall('o') # Troll
+        self.chan.sendall('n') # Troll
         time.sleep(SLEEP_BETWEEN_REFRESH)
         self.chan.sendall('h') # Berserker
         time.sleep(SLEEP_BETWEEN_REFRESH)
@@ -84,7 +93,13 @@ class crawlgame(object):
         time.sleep(SLEEP_BETWEEN_REFRESH)
         ticks = 0
         test_bouffe = False
+
         while True:
+            # refresh screen
+            self.stdscr.refresh()
+            # Check if keypress
+            if self.stdscr.getch() >= 0:
+                return
             if ticks % FORCE_REFRESH:
                 # Envoyer un force refresh
                 self.chan.sendall('\x12')
@@ -100,6 +115,7 @@ class crawlgame(object):
                 self.chan.sendall(' ')
                 continue
             
+            # Handling of level ups
             if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.extract_vision().splitlines()[-2]:
                 self.chan.sendall('s')
                 continue
@@ -107,7 +123,7 @@ class crawlgame(object):
             # On Dying
             #if "Inventory:"
 
-            wanted_direction = self.nearest_symbol_direction('abcdefghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+            wanted_direction, symb = self.nearest_symbol_direction(ennemy_symbols)
             if wanted_direction != 's':
             #ennemies = self.get_near_ennemies()
             #if len(ennemies) > 0:
@@ -116,7 +132,7 @@ class crawlgame(object):
                 self.statemachine = 'manger'
             elif "Done exploring." in self.extract_vision().splitlines()[-2]:
                 self.statemachine = 'deeper'
-            elif '%' in "".join(self.extract_map()) and self.nearest_symbol_direction('%') != 's':
+            elif '%' in "".join(self.extract_map()) and self.nearest_symbol_direction('%')[0] != 's':
                 # Checker bouffe apres pour qu'on depose les skeleton à terre...
                 self.statemachine = 'chunker_bouffe'
             else:
@@ -126,8 +142,8 @@ class crawlgame(object):
             if self.statemachine == 'attack':
                 # On check notre vie voir si tout va bien 
                 # On determine par ou il faut aller pour tuer l'ennemi le plus proche
-                wanted_direction = self.nearest_symbol_direction('abcdefghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOPQRSTUVWXYZ')
-                print("on veut aller chercher l'ennemi vers %s" % wanted_direction)
+                wanted_direction, symb = self.nearest_symbol_direction(ennemy_symbols)
+                print("on veut aller chercher l'ennemi [%s] vers %s\r" % (symb, wanted_direction))
                 self.chan.sendall(wanted_direction)
             elif self.statemachine == 'manger':
                 self.chan.sendall('e')
@@ -138,7 +154,7 @@ class crawlgame(object):
                     self.chan.sendall(self.extract_vision().splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
             elif self.statemachine == 'chunker_bouffe':
                 # On mange + bouffe le corps!
-                wanted_direction, distance = self.nearest_symbol_direction('%', distance=True)
+                wanted_direction, symb, distance = self.nearest_symbol_direction('%', distance=True)
                 if distance == 1:
                     self.chan.sendall('%sce' % wanted_direction)
                     time.sleep(0.3)
@@ -153,14 +169,14 @@ class crawlgame(object):
             elif self.statemachine == 'deeper':
                 # TODO: Dropper tous les skelettes...
                 # TODO: if outside dungeon...
-                print("We're going deeper!!!")
+                print("We're going deeper!!!\r")
                 self.chan.sendall("G>")
                 time.sleep(1.5)
             else:
                 # Default state - exploration
                 if float(self.char.health)/float(self.char.maxhealth) < 0.55:
                     if DEBUG:
-                        print('Healing self')
+                        print('Healing self\r')
                     self.chan.sendall('5')
                     continue
                 self.chan.sendall('o')
@@ -175,7 +191,7 @@ class crawlgame(object):
             buffer += self.chan.recv(RECV_BUFF)
             time.sleep(0.2)
         self.screen.ProcessInput(buffer)
-        ss_ecran = "\n".join([a.tostring() for a in self.screen.GetRawScreen()])
+        ss_ecran = "\r\n".join([a.tostring() for a in self.screen.GetRawScreen()])
         return ss_ecran
 
     def extract_map(self):
@@ -189,7 +205,7 @@ class crawlgame(object):
         map = self.extract_map()
 
         output = [[999 for b in range(len(map[0]))] for a in range(len(map))] # Laite que le *****
-        output[8][16] = 0 # Par definition, c'est nous-meme...
+        output[8][11] = 0 # Par definition, c'est nous-meme...
         mapping = [['s' for b in range(len(map[0]))] for a in range(len(map))] # Laite que le ***** yet again
         # output = distances, mapping = direction du premier carre
 
@@ -200,7 +216,7 @@ class crawlgame(object):
             for y, outy in enumerate(output):
                 for x, outx in enumerate(outy):
                     # Ensure that this point is walkable
-                    if map[y][x] in ['#', ' ']:
+                    if map[y][x] in UNWALKABLE:
                         continue
                     # Calculer par rapport au plus proche qu'on connait (carre de 8 proche)
                     for newy in range(y-1, y+2):
@@ -230,16 +246,18 @@ class crawlgame(object):
         # trouver les ennemis
         direction_to_go = 's'
         ennemy_dist = 999
+        symbol = ''
         for y, outy in enumerate(map):
             for x, outx in enumerate(outy):
                 if map[y][x] in symbols:
                     if distances[y][x] < ennemy_dist and distances[y][x] > 0:
                         direction_to_go = directions[y][x]
                         ennemy_dist = distances[y][x]
+                        symbol = map[y][x]
         if distance == False:
-            return direction_to_go
+            return direction_to_go, symbol
         else:
-            return direction_to_go, ennemy_dist
+            return direction_to_go, symbol, ennemy_dist
 
         
     def parse_stats(self):
@@ -253,9 +271,9 @@ class crawlgame(object):
             self.char.maxhealth = int(health_re.match(ecran[ecran.index("Health:"):].splitlines()[0]).group(2))
             self.char.magic = int(magic_re.match(ecran[ecran.index("Magic:"):].splitlines()[0]).group(1))
             self.char.maxmagic = int(magic_re.match(ecran[ecran.index("Magic:"):].splitlines()[0]).group(2))
-            print("Found: %u/%u - %u/%u" % (self.char.health, self.char.maxhealth, self.char.magic, self.char.maxmagic))
+            print("Found: %u/%u - %u/%u\r" % (self.char.health, self.char.maxhealth, self.char.magic, self.char.maxmagic))
         except:
-            print('Unable to parse stats : %s' % sys.exc_info()[0])
+            print('Unable to parse stats : %s\r' % sys.exc_info()[0])
 
        
     def get_near_ennemies(self):
@@ -268,17 +286,21 @@ class crawlgame(object):
         pass
 
 
-if __name__ == '__main__':
-    print('Connecting to server...')
-    le_jeu = crawlgame()
-    print('Connected')
-    logging_ret = le_jeu.log()
-    print('Logged.')
+def main(stdscr):
+    print('Connecting to server...\r')
+    stdscr.nodelay(True)
+    le_jeu = crawlgame(stdscr)
+    print('Connected\r')
+    logging_ret = le_jeu.log_into_game()
+    print('Logged.\r')
     perso_cree = le_jeu.create_perso()
     if perso_cree != -1:
-        print('Character created!')
-    print('Character generation passed')
+        print('Character created!\r')
+    print('Character generation passed\r')
     le_jeu.jouer()
-    print('Quitting...')
+    print('Quitting...\r')
     le_jeu.close()
 
+
+if __name__ == '__main__':
+    curses.wrapper(main)

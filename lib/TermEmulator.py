@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # TermEmulator - Emulator for VT100 terminal programs
 # Copyright (C) 2008 Siva Chandran P
 #
@@ -477,7 +478,8 @@ class V102Terminal:
                 if ch in self.printableChars:
                     self.__PushChar(ch)
                 else:
-                    print "WARNING: Unsupported character %s:%d" % (ch, ascii)
+                    self.__PushChar('`')
+                    #print "WARNING: Unsupported character %s:%d\r" % (ch, ascii)
                 index += 1
         
         # update the dirty lines
