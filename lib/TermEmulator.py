@@ -44,6 +44,7 @@ class V102Terminal:
     __ASCII_VT = 11     # Vertical Tab
     __ASCII_FF = 12     # Form Feed
     __ASCII_CR = 13     # Carriage Return
+    __ASCII_SI = 15     # Shift In
     __ASCII_XON = 17    # Resume Transmission
     __ASCII_XOFF = 19   # Stop Transmission or Ignore Characters
     __ASCII_ESC = 27    # Escape
@@ -126,6 +127,7 @@ class V102Terminal:
                              self.__ASCII_XOFF:self.__OnCharXOFF,
                              self.__ASCII_ESC:self.__OnCharESC,
                              self.__ASCII_CSI:self.__OnCharCSI,
+                             self.__ASCII_SI:self.__OnCharIgnore,
                             }
         
         # escape sequence handlers
@@ -478,8 +480,7 @@ class V102Terminal:
                 if ch in self.printableChars:
                     self.__PushChar(ch)
                 else:
-                    self.__PushChar('`')
-                    #print "WARNING: Unsupported character %s:%d\r" % (ch, ascii)
+                    print "WARNING: Unsupported character %s:%d\r" % (ch, ascii)
                 index += 1
         
         # update the dirty lines
