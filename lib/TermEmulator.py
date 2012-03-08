@@ -151,6 +151,7 @@ class V102Terminal:
         self.printableChars += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         self.printableChars += """!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~ """
         self.printableChars += "\t"
+
         
         # terminal screen, its a list of string in which each string always
         # holds self.cols characters. If the screen doesn't contain any 
@@ -170,11 +171,11 @@ class V102Terminal:
         self.isLineDirty = []
         
         for i in range(rows):
-            line = array('c')
+            line = array('u')
             rendition = array('L')
             
             for j in range(cols):
-                line.append(' ')
+                line.append(u' ')
                 rendition.append(0)
             
             self.screen.append(line)
@@ -255,7 +256,7 @@ class V102Terminal:
                 rendition = array('L')
                 
                 for j in range(self.cols):
-                    line.append(' ')
+                    line.append(u' ')
                     rendition.append(0)
                 
                 self.screen.append(line)
@@ -272,7 +273,7 @@ class V102Terminal:
             # add cols at right
             for i in range(self.rows):
                 for j in range(cols - self.cols):
-                    self.screen[i].append(' ')
+                    self.screen[i].append(u' ')
                     self.scrRendition[i].append(0)
         
         self.rows = rows
@@ -331,7 +332,7 @@ class V102Terminal:
                 end = endCol
                 
             for j in range(start, end + 1):
-                self.screen[i][j] = ' '
+                self.screen[i][j] = u' '
                 self.scrRendition[i][j] = 0
                 
             if end + 1 > start:
@@ -477,10 +478,11 @@ class V102Terminal:
             if ascii in self.charHandlers.keys():
                 index = self.charHandlers[ascii](text, index)
             else:
-                if ch in self.printableChars:
-                    self.__PushChar(ch)
-                else:
-                    print "WARNING: Unsupported character %s:%d\r" % (ch, ascii)
+                self.__PushChar(ch)
+                #if ch in self.printableChars:
+                #    self.__PushChar(ch)
+                #else:
+                #    print "WARNING: Unsupported character %s:%d\r" % (ch, ascii)
                 index += 1
         
         # update the dirty lines
@@ -507,7 +509,7 @@ class V102Terminal:
             
         line = self.screen.pop(0)
         for i in range(self.cols):
-            line[i] = ' '
+            line[i] = u' '
         self.screen.append(line)
         
         rendition = self.scrRendition.pop(0)
