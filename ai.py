@@ -10,6 +10,8 @@ import fcntl
 import os
 import termios
 import curses
+import codecs
+import random
 
 FORCE_REFRESH = 10
 RECV_BUFF = 9999
@@ -21,9 +23,15 @@ PLAYER_PASSWORD = 'poussin'
 
 DEBUG = True
 
-ennemy_symbols = 'abcdefghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOQRSTUVWXYZ'
+ennemy_symbols = 'abcdeghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOQRSTUVWXYZ'
+# f = fungus
+# P = plant
 
-UNWALKABLE = ['#', ' ', '`']
+UNWALKABLE = ['#', # Wall
+              ' ', # Unknown terrain
+              u'\u2663', # Undestructible Plant (evident, no?)
+              'P', # Plant  Technically destructable but long...
+              ]
 
 
 class character(object):
@@ -31,6 +39,7 @@ class character(object):
     maxhealth = -1
     magic = -1
     maxmagic = -1
+
 
 class NotFoundOurselves(Exception):
     pass
@@ -40,7 +49,7 @@ class crawlgame(object):
     def __init__(self, in_scr):
         self.gamehdl = paramiko.SSHClient()
         self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=5)
+        self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=10)
         self.chan = self.gamehdl.invoke_shell()
         # Initialize the character variables
         self.char = character()
@@ -105,7 +114,6 @@ class crawlgame(object):
         test_bouffe = False
 
         GetCharColor = self.screen.GetRendition
-        self.nearest_symbol_direction('%')[0] != 's'
 
         while True:
             # Refresh screen
@@ -122,15 +130,26 @@ class crawlgame(object):
 
             # Handling Debug
             if DEBUG:
-                with open('log.txt', 'a') as hdl:
-                    hdl.write('\r\n'+'-'*80)
-                    hdl.write(ecran+'\r')
-                print('-'*80)
+                with codecs.open('log.txt', 'ab', "utf-8") as hdl:
+                    hdl.write('\r\n'+u'-'*80)
+                    hdl.write(ecran)
+                print('\r' + '-'*80 + '\r')
                 print(ecran+'\r')
+
+            # Get character stats
             self.parse_stats()
            
-            # Pomper les evenements qui arrivent pas souvent 
-            if "--more--" in self.extract_history()[-1]:
+            # Upon Dying
+            if "You die..." in "".join(self.extract_history()):
+                self.chan.sendall('          qq') # Spam spacebar and then quit
+                a = ('Died...\r')
+                self.stdscr.refresh()
+                while self.stdscr.getch() >= 0:
+                    time.sleep(0.5)
+                return
+
+            # Pump rare (level up) or too much events
+            if "--more--" in "".join(self.extract_history()):
                 self.chan.sendall(' ')
                 continue
             
@@ -138,31 +157,28 @@ class crawlgame(object):
             if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.extract_vision().splitlines()[-2]:
                 self.chan.sendall('s')
                 continue
-            
-            # On Dying
-            if "You die..." in "".join(self.extract_history()):
-                self.chan.sendall('          qq') # Spam spacebar and then quit
-                a = input('Died...\r')
-                return
 
             # The Emotional Case
             wanted_attack_dir, symb_atk, dist, pos = self.nearest_symbol_direction(ennemy_symbols)
             wanted_food_dir, symb_food, dist_food, pos_food = self.nearest_symbol_direction('%')
-            if wanted_direction != 's':
+            print('Position de la bouffe: %s\r' % str(pos_food))
+            print('Couleur de la bouffe: %s\r' % str(GetCharColor(pos_food[0], pos_food[1])))
+            self.stdscr.refresh()
+            if wanted_attack_dir != 's':
             #ennemies = self.get_near_ennemies()
             #if len(ennemies) > 0:
                 self.statemachine = 'attack'
             elif ("ungry" in self.extract_vision() or "tarving" in self.extract_vision()) and test_bouffe: # Pas de lettre initiale pour matcher Near starving et Starving
                 self.statemachine = 'manger'
-            elif "Done exploring." in self.extract_vision().splitlines()[-2]:
+            elif "Done exploring." in "".join(self.extract_history()):
                 self.statemachine = 'deeper'
-            elif '%' in "".join(self.extract_map()[0]):
-                # Ensure it's routable and it's not a skeleton
-                direction, symbol, dist, pos = self.nearest_symbol_direction('%')
-                print('Couleur de la bouffe: %s\r' % str(GetCharColor(pos[0], pos[1])))
-                self.stdscr.refresh()
-                if self.nearest_symbol_direction('%')[0] != 's' and GetCharColor(pos[0], pos[1]) != (0L, 0L, 0L):
-                    self.statemachine = 'chunker_bouffe'
+            elif '%' in "".join(self.extract_map()[0]) and \
+                wanted_food_dir != 's' and \
+                GetCharColor(pos_food[0], pos_food[1]) != (64L, 0L, 0L):
+                self.statemachine = 'chunker_bouffe'
+            elif len(self.get_near_ennemies()) > 0:
+                # Problem: We can't path toward an ennemy...
+                self.statemachine = 'go_random'
             else:
                 self.statemachine = None
             
@@ -200,12 +216,17 @@ class crawlgame(object):
                 print("We're going deeper!!!\r")
                 self.chan.sendall("G>")
                 time.sleep(SLEEP_BETWEEN_ACTIONS*3)
+            elif self.statemachine == 'go_random':
+                # TODO: Do something more logical...
+                self.chan.sendall(random.sample(['h', 'j', 'k', 'l', 'u', 'y', 'n', 'b'], 1)[0])
+                time.sleep(SLEEP_BETWEEN_REFRESH)
             else:
                 # Default state - exploration
                 if float(self.char.health)/float(self.char.maxhealth) < 0.55:
                     if DEBUG:
                         print('Healing self\r')
                     self.chan.sendall('5')
+                    time.sleep(SLEEP_BETWEEN_ACTIONS)
                     continue
                 self.chan.sendall('o')
                 # attendre un peu que tout ait bien...
@@ -213,13 +234,16 @@ class crawlgame(object):
             ticks += 1
 
     def extract_vision(self):
+        """
+        Pipe stream from SSH to the terminal emulator and return the output (virtual screen)
+        """
         buffer = b''
         while self.chan.recv_ready():
             time.sleep(0.5)
             buffer += self.chan.recv(RECV_BUFF)
             time.sleep(0.2)
-        self.screen.ProcessInput(buffer)
-        ss_ecran = "\r\n".join([a.tostring() for a in self.screen.GetRawScreen()])
+        self.screen.ProcessInput(buffer.decode('utf-8'))
+        ss_ecran = "\r\n".join([a.tounicode() for a in self.screen.GetRawScreen()])
         return ss_ecran
 
     def extract_map(self):
@@ -229,12 +253,22 @@ class crawlgame(object):
         return ["".join(a) for a in zip(*zip(*ecran.splitlines()[0:17])[:34])], [[b & 0x0000ff00 >> 8 for b in a] for a in zip(*zip(*ecran_rendition[0:17])[:34])]
 
     def extract_history(self):
-        ecran = self.extract_vision()
+        ecran = self.extract_vision().splitlines()
+        if ecran == None or len(ecran) < 1:
+            return []
         return ecran[-7:]
+
+    def last_history(self):
+        history = self.extract_history()
+        history.reverse()
+        for a in history:
+            if a is not None and len(a.strip()) > 0:
+                return a
+        return ''
 
     def get_pathfinding(self):
         """
-        retourne la map et une annotation a chaque point 2D la premiere direction (coup a jouer) pour s'y rendre.
+        Retourne la map et une annotation a chaque point 2D la premiere direction (coup a jouer) pour s'y rendre.
         """
         map, color = self.extract_map()
 
@@ -341,7 +375,7 @@ def main(stdscr):
     le_jeu = crawlgame(stdscr)
     print('Connected\r')
     stdscr.refresh()
-    while 'Not logged in' not in le_jeu.extract_vision():
+    while u'Not logged in' not in le_jeu.extract_vision():
         time.sleep(1)
     logging_ret = le_jeu.log_into_game()
     print('Logged.\r')
@@ -352,7 +386,7 @@ def main(stdscr):
     print('Character generation passed\r')
     stdscr.refresh()
     # Be sure that we're not on the stale screen
-    while 'some stale' in le_jeu.extract_vision():
+    while u'some stale' in le_jeu.extract_vision():
         time.sleep(1)
     le_jeu.jouer()
     print('Quitting...\r')
