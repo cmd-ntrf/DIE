@@ -5,12 +5,14 @@
 import time
 import re
 import sys
-import fcntl
-import os
-import termios
 import curses
 import codecs
 import random
+
+# unused import
+import fcntl
+import os
+import termios
 
 # pip import
 import pexpect
@@ -40,7 +42,6 @@ class Character(object):
     maxhealth = -1
     magic = -1
     maxmagic = -1
-
 
 class NotFoundOurselves(Exception):
     pass
@@ -118,11 +119,11 @@ class CrawlGame(object):
         self.spawn.send('\x12')
         time.sleep(SLEEP_BETWEEN_ACTIONS)
         self.screen = self.extract_vision()
-   
+
     def menu(self, menu):
         self.spawn.send(menu)
         time.sleep(SLEEP_BETWEEN_ACTIONS)
-        self.screen = self.extract_vision()        
+        self.screen = self.extract_vision()
 
     def jouer(self):
         # Delay lorsqu'on part
@@ -190,7 +191,6 @@ class CrawlGame(object):
                 self.statemachine = 'chunker_bouffe'
             elif len(self.get_near_ennemies()) > 0:
                 # Problem: We can't path toward an ennemy...
-                print('Etat : %s' % self.get_near_ennemies())
                 self.statemachine = 'go_random'
             else:
                 self.statemachine = None
@@ -210,7 +210,9 @@ class CrawlGame(object):
                 if "You aren't carrying any food." in self.screen.splitlines()[-2]:
                     test_bouffe = False
                 else:
-                    self.action(self.screen.splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
+                    # Eat the first item from our stash
+                    food_index = self.screen.splitlines()[2].strip()[0]
+                    self.menu(food_index)
             elif self.statemachine == 'chunker_bouffe':
                 # On mange + bouffe le corps!
                 wanted_direction, symb, distance, pos = self.nearest_symbol_direction('%')
