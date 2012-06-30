@@ -26,5 +26,5 @@ ToDo
 Requirements
 ------------
 * Python >=2.6
-* pexpect (easy_install/pip paramiko)
+* pexpect (easy_install/pip pexpect)
 
