@@ -1,11 +1,9 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import pexpect
-
+# Std lib import
 import time
 import re
-from lib import TermEmulator
 import sys
 import fcntl
 import os
@@ -14,13 +12,16 @@ import curses
 import codecs
 import random
 
+# pip import
+import pexpect
+
+# local import
+from lib import TermEmulator
+
 FORCE_REFRESH = 10
 BUFF_SIZE = 9999
-SLEEP_BETWEEN_ACTIONS = 0.8
-SLEEP_BETWEEN_REFRESH = 1.5
-
-PLAYER_NAME = 'xuvaros'
-PLAYER_PASSWORD = 'poussin'
+SLEEP_BETWEEN_ACTIONS = 0
+SLEEP_BETWEEN_REFRESH = 0
 
 DEBUG = True
 
@@ -46,45 +47,47 @@ class NotFoundOurselves(Exception):
     pass
 
 
-def init_ssh_spawn(username, password, character="n", class_="p"):
-    # self.gamehdl = paramiko.SSHClient()
-    # self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    # self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=10)
-    # self.chan = self.gamehdl.invoke_shell()
-    # def log_into_game(self):
-    #     if self.recv_checkpoint("Not logged in.") == None:
-    #         return -1
-    #     self.spawn.sendall('l')
-    #     self.spawn.send('%s\n' % PLAYER_NAME)
-    #     self.spawn.send('%s\n' % PLAYER_PASSWORD)
-    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
-    #     self.pompe_screen()
-    #     time.sleep(SLEEP_BETWEEN_REFRESH)
-    # def init_play_game(self):
-    #     self.spawn.send('1') # play now!
-    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
-    #     self.spawn.send('p')
-    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
-    #     return self.create_perso()
+def init_ssh_spawn(username, password, species="n", class_="h"):
+    spawn = pexpect.spawn("ssh -p 22 joshua@crawl.akrasiac.org")
+    spawn.expect("joshua@crawl.akrasiac.org's password:")
+    spawn.sendline("joshua")
+    spawn.expect("=>")
+    spawn.send("l")
+    spawn.expect("=>")
+    spawn.sendline(username)
+    spawn.expect("=>")
+    spawn.sendline(password)
+    spawn.expect("=>")
+    spawn.send("1")
+    spawn.expect("=>")
+    spawn.send("P")
+    try:
+        spawn.expect("species", timeout=1)
+    except pexpect.TIMEOUT:
+        # Character already exists, skip the creation part
+        return spawn
 
-    # def create_perso(self):
-    #     time.sleep(SLEEP_BETWEEN_REFRESH)
-    #     # Verify if character is already created or not
-    #     if self.recv_checkpoint("Please select your species.") == None:
-    #         return -1
-    #     self.spawn.send('n') # Troll
-    #     time.sleep(SLEEP_BETWEEN_REFRESH)
-    #     self.spawn.send('h') # Berserker
-    #     time.sleep(SLEEP_BETWEEN_REFRESH)
-    #     return 0
-    pass
+    spawn.send(species)
+    spawn.expect("background")
+    spawn.send(class_)
+    return spawn
 
-def init_local_spawn(name="", character="n", class_="h", path=""):
-    spawn = pexpect.spawn(path + "crawl")
+def init_local_spawn(name="", species="n", class_="h", path=""):
+    """Spawn a local game of crawl for the player *name*, with
+    a character *species* of class *class_*. The variable *path*
+    should points to the crawl binary.
+    """
+    try:
+        spawn = pexpect.spawn(path + "crawl")
+    except pexpect.ExceptionPexpect:
+        print "Wrong path to crawl."
+        exit()
+
+    spawn.expect("Enter your name:")
     spawn.send(name)
-    spawn.send("\t")
-    # spawn.send(character)
-    # spawn.send(class_)
+    spawn.sendline("\r")
+    spawn.send(species)
+    spawn.send(class_)
     return spawn
 
 class CrawlGame(object):
@@ -122,7 +125,9 @@ class CrawlGame(object):
             self.stdscr.refresh()
             # Check if keypress
             if self.stdscr.getch() >= 0:
+                self.spawn.interact()
                 return
+
             if ticks % FORCE_REFRESH:
                 # Envoyer un force refresh
                 self.spawn.send('\x12')
@@ -239,12 +244,16 @@ class CrawlGame(object):
         """Pipe stream from SSH to the terminal emulator and
         return the output (virtual screen).
         """
-        buffer_ = b''
+        #buffer_ = b''
+        buffer_ = ''
         while not self.spawn.eof():
-            time.sleep(0.5)
-            buffer += self.spawn.read_nonblocking(BUFF_SIZE)
-            time.sleep(0.2)
-        self.screen.ProcessInput(buffer.decode('utf-8'))
+            #time.sleep(0.5)
+            try:
+                buffer_ += self.spawn.read_nonblocking(BUFF_SIZE, timeout=0)
+            except pexpect.TIMEOUT:
+                break
+            #time.sleep(0.2)
+        self.screen.ProcessInput(buffer_.decode('utf-8'))
         ss_ecran = "\r\n".join([a.tounicode() for a in self.screen.GetRawScreen()])
         return ss_ecran
 
