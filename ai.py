@@ -25,7 +25,7 @@ SLEEP_BETWEEN_REFRESH = 0
 
 DEBUG = True
 
-ennemy_symbols = 'abcdeghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOQRSTUVWXYZ'
+ennemy_symbols = 'abcdeghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOQRSTUVWXYZ5'
 # f = fungus
 # P = plant
 
@@ -34,7 +34,6 @@ UNWALKABLE = ['#', # Wall
               u'\u2663', # Undestructible Plant (evident, no?)
               'P', # Plant  Technically destructable but long...
               ]
-
 
 class Character(object):
     health = -1
@@ -112,13 +111,18 @@ class CrawlGame(object):
         else:
             return None
 
-    def action(self, action):
+    def action(self, action, refresh=True):
         self.spawn.send(action)
         time.sleep(SLEEP_BETWEEN_ACTIONS)
         # Refresh screen before extracting
         self.spawn.send('\x12')
         time.sleep(SLEEP_BETWEEN_ACTIONS)
         self.screen = self.extract_vision()
+   
+    def menu(self, menu):
+        self.spawn.send(menu)
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
+        self.screen = self.extract_vision()        
 
     def jouer(self):
         # Delay lorsqu'on part
@@ -172,7 +176,6 @@ class CrawlGame(object):
             wanted_food_dir, symb_food, dist_food, pos_food = self.nearest_symbol_direction('%')
             print('Position de la bouffe: %s\r' % str(pos_food))
             print('Couleur de la bouffe: %s\r' % str(GetCharColor(pos_food[0], pos_food[1])))
-            self.stdscr.refresh()
             if wanted_attack_dir != 's':
             #ennemies = self.get_near_ennemies()
             #if len(ennemies) > 0:
@@ -187,9 +190,13 @@ class CrawlGame(object):
                 self.statemachine = 'chunker_bouffe'
             elif len(self.get_near_ennemies()) > 0:
                 # Problem: We can't path toward an ennemy...
+                print('Etat : %s' % self.get_near_ennemies())
                 self.statemachine = 'go_random'
             else:
                 self.statemachine = None
+
+            print('Etat : %s' % self.statemachine)
+            self.stdscr.refresh()
 
             # The State Machine
             if self.statemachine == 'attack':
@@ -199,7 +206,7 @@ class CrawlGame(object):
                 print("on veut aller chercher l'ennemi [%s] vers %s\r" % (symb, wanted_direction))
                 self.action(wanted_direction)
             elif self.statemachine == 'manger':
-                self.action('e')
+                self.menu('e')
                 if "You aren't carrying any food." in self.screen.splitlines()[-2]:
                     test_bouffe = False
                 else:
@@ -211,7 +218,7 @@ class CrawlGame(object):
                     self.action('%sce' % wanted_direction)
                     if "(ye/n/q/i?)" in self.screen.splitlines()[-2]:
                         while "(ye/n/q/i?)" in self.screen.splitlines()[-2]:
-                            self.action('y')
+                            self.menu('y')
                     else:
                         self.action('\x1bg') # C'est peut-être un skelette! on le prend aussi!
                 else:
@@ -366,7 +373,7 @@ class CrawlGame(object):
 
     def get_near_ennemies(self):
         ecran = self.screen
-        lignes = ecran.splitlines()[11:16] # Ne prendre que les lignes 12 a 17, contenant des ennemis
+        lignes = ecran.splitlines()[12:16] # Ne prendre que les lignes 12 a 17, contenant des ennemis
         # Ne prendre que les colonnes 35+, contenant la liste des ennemis.
         return ["".join(a).strip() for a in zip(*zip(*lignes)[34:]) if "".join(a).strip() != '']
 
