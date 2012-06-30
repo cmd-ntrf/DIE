@@ -1,7 +1,8 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import paramiko
+import pexpect
+
 import time
 import re
 from lib import TermEmulator
@@ -14,7 +15,7 @@ import codecs
 import random
 
 FORCE_REFRESH = 10
-RECV_BUFF = 9999
+BUFF_SIZE = 9999
 SLEEP_BETWEEN_ACTIONS = 0.8
 SLEEP_BETWEEN_REFRESH = 1.5
 
@@ -45,27 +46,56 @@ class NotFoundOurselves(Exception):
     pass
 
 
+def init_ssh_spawn(username, password, character="n", class_="p"):
+    # self.gamehdl = paramiko.SSHClient()
+    # self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=10)
+    # self.chan = self.gamehdl.invoke_shell()
+    # def log_into_game(self):
+    #     if self.recv_checkpoint("Not logged in.") == None:
+    #         return -1
+    #     self.spawn.sendall('l')
+    #     self.spawn.send('%s\n' % PLAYER_NAME)
+    #     self.spawn.send('%s\n' % PLAYER_PASSWORD)
+    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
+    #     self.pompe_screen()
+    #     time.sleep(SLEEP_BETWEEN_REFRESH)
+    # def init_play_game(self):
+    #     self.spawn.send('1') # play now!
+    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
+    #     self.spawn.send('p')
+    #     time.sleep(SLEEP_BETWEEN_ACTIONS)
+    #     return self.create_perso()
+
+    # def create_perso(self):
+    #     time.sleep(SLEEP_BETWEEN_REFRESH)
+    #     # Verify if character is already created or not
+    #     if self.recv_checkpoint("Please select your species.") == None:
+    #         return -1
+    #     self.spawn.send('n') # Troll
+    #     time.sleep(SLEEP_BETWEEN_REFRESH)
+    #     self.spawn.send('h') # Berserker
+    #     time.sleep(SLEEP_BETWEEN_REFRESH)
+    #     return 0
+    pass
+
+def init_local_spawn(name="", character="n", class_="h", path=""):
+    spawn = pexpect.spawn(path + "crawl")
+    spawn.send(name)
+    spawn.send("\t")
+    # spawn.send(character)
+    # spawn.send(class_)
+    return spawn
+
 class CrawlGame(object):
-    def __init__(self, in_scr):
-        self.gamehdl = paramiko.SSHClient()
-        self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=10)
-        self.chan = self.gamehdl.invoke_shell()
+    def __init__(self, in_scr, spawn):
         # Initialize the character variables
         self.char = Character()
         # Initialize virtual terminal emulation
-        self.screen = TermEmulator.V102Terminal(24,100)
+        self.screen = TermEmulator.V102Terminal(24, 80)
         self.stdscr = in_scr
+        self.spawn = spawn
         time.sleep(SLEEP_BETWEEN_ACTIONS)
-
-    def __del__(self):
-        self.close()
-
-    def close(self):
-        self.gamehdl.close()
-
-    def get_communication(self):
-        return self.chan
 
     def pompe_screen(self):
         """Pump graphic events, permet de ne pas fuller le buffer de SSH"""
@@ -78,34 +108,6 @@ class CrawlGame(object):
             return ss_ecran
         else:
             return None
-
-    def log_into_game(self):
-        if self.recv_checkpoint("Not logged in.") == None:
-            return -1
-        self.chan.sendall('l')
-        self.chan.sendall('%s\n' % PLAYER_NAME)
-        self.chan.sendall('%s\n' % PLAYER_PASSWORD)
-        time.sleep(SLEEP_BETWEEN_ACTIONS)
-        self.pompe_screen()
-        time.sleep(SLEEP_BETWEEN_REFRESH)
-
-    def init_play_game(self):
-        self.chan.sendall('1') # play now!
-        time.sleep(SLEEP_BETWEEN_ACTIONS)
-        self.chan.sendall('p')
-        time.sleep(SLEEP_BETWEEN_ACTIONS)
-        return self.create_perso()
-
-    def create_perso(self):
-        time.sleep(SLEEP_BETWEEN_REFRESH)
-        # Verify if character is already created or not
-        if self.recv_checkpoint("Please select your species.") == None:
-            return -1
-        self.chan.sendall('n') # Troll
-        time.sleep(SLEEP_BETWEEN_REFRESH)
-        self.chan.sendall('h') # Berserker
-        time.sleep(SLEEP_BETWEEN_REFRESH)
-        return 0
 
     def jouer(self):
         # Delay lorsqu'on part
@@ -123,7 +125,7 @@ class CrawlGame(object):
                 return
             if ticks % FORCE_REFRESH:
                 # Envoyer un force refresh
-                self.chan.sendall('\x12')
+                self.spawn.send('\x12')
                 test_bouffe = True
             time.sleep(SLEEP_BETWEEN_ACTIONS)
             ecran = self.extract_vision()
@@ -138,10 +140,10 @@ class CrawlGame(object):
 
             # Get character stats
             self.parse_stats()
-           
+
             # Upon Dying
             if "You die..." in "".join(self.extract_history()):
-                self.chan.sendall('          qq') # Spam spacebar and then quit
+                self.spawn.send('          qq') # Spam spacebar and then quit
                 a = ('Died...\r')
                 self.stdscr.refresh()
                 while self.stdscr.getch() >= 0:
@@ -150,12 +152,12 @@ class CrawlGame(object):
 
             # Pump rare (level up) or too much events
             if "--more--" in "".join(self.extract_history()):
-                self.chan.sendall(' ')
+                self.spawn.send(' ')
                 continue
-            
+
             # Handling of level ups
             if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.extract_vision().splitlines()[-2]:
-                self.chan.sendall('s')
+                self.spawn.send('s')
                 continue
 
             # The Emotional Case
@@ -181,66 +183,66 @@ class CrawlGame(object):
                 self.statemachine = 'go_random'
             else:
                 self.statemachine = None
-            
+
             # The State Machine
             if self.statemachine == 'attack':
-                # On check notre vie voir si tout va bien 
+                # On check notre vie voir si tout va bien
                 # On determine par ou il faut aller pour tuer l'ennemi le plus proche
                 wanted_direction, symb, dist, pos = self.nearest_symbol_direction(ennemy_symbols)
                 print("on veut aller chercher l'ennemi [%s] vers %s\r" % (symb, wanted_direction))
-                self.chan.sendall(wanted_direction)
+                self.spawn.send(wanted_direction)
             elif self.statemachine == 'manger':
-                self.chan.sendall('e')
+                self.spawn.send('e')
                 time.sleep(0.3)
                 if "You aren't carrying any food." in self.extract_vision().splitlines()[-2]:
                     test_bouffe = False
                 else:
-                    self.chan.sendall(self.extract_vision().splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
+                    self.spawn.send(self.extract_vision().splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
             elif self.statemachine == 'chunker_bouffe':
                 # On mange + bouffe le corps!
                 wanted_direction, symb, distance, pos = self.nearest_symbol_direction('%')
                 if distance == 1:
-                    self.chan.sendall('%sce' % wanted_direction)
+                    self.spawn.send('%sce' % wanted_direction)
                     time.sleep(0.3)
                     if "(ye/n/q/i?)" in self.extract_vision().splitlines()[-2]:
                         while "(ye/n/q/i?)" in self.extract_vision().splitlines()[-2]:
-                            self.chan.sendall('y')
+                            self.spawn.send('y')
                             time.sleep(0.3)
                     else:
-                        self.chan.sendall('\x1bg') # C'est peut-être un skelette! on le prend aussi!
+                        self.spawn.send('\x1bg') # C'est peut-être un skelette! on le prend aussi!
                 else:
-                    self.chan.sendall(wanted_direction)
+                    self.spawn.send(wanted_direction)
             elif self.statemachine == 'deeper':
                 # TODO: Dropper tous les skelettes...
                 # TODO: if outside dungeon...
                 print("We're going deeper!!!\r")
-                self.chan.sendall("G>")
+                self.spawn.send("G>")
                 time.sleep(SLEEP_BETWEEN_ACTIONS*3)
             elif self.statemachine == 'go_random':
                 # TODO: Do something more logical...
-                self.chan.sendall(random.sample(['h', 'j', 'k', 'l', 'u', 'y', 'n', 'b'], 1)[0])
+                self.spawn.send(random.sample(['h', 'j', 'k', 'l', 'u', 'y', 'n', 'b'], 1)[0])
                 time.sleep(SLEEP_BETWEEN_REFRESH)
             else:
                 # Default state - exploration
                 if float(self.char.health)/float(self.char.maxhealth) < 0.55:
                     if DEBUG:
                         print('Healing self\r')
-                    self.chan.sendall('5')
+                    self.spawn.send('5')
                     time.sleep(SLEEP_BETWEEN_ACTIONS)
                     continue
-                self.chan.sendall('o')
+                self.spawn.send('o')
                 # attendre un peu que tout ait bien...
                 time.sleep(SLEEP_BETWEEN_REFRESH)
             ticks += 1
 
     def extract_vision(self):
+        """Pipe stream from SSH to the terminal emulator and
+        return the output (virtual screen).
         """
-        Pipe stream from SSH to the terminal emulator and return the output (virtual screen)
-        """
-        buffer = b''
-        while self.chan.recv_ready():
+        buffer_ = b''
+        while not self.spawn.eof():
             time.sleep(0.5)
-            buffer += self.chan.recv(RECV_BUFF)
+            buffer += self.spawn.read_nonblocking(BUFF_SIZE)
             time.sleep(0.2)
         self.screen.ProcessInput(buffer.decode('utf-8'))
         ss_ecran = "\r\n".join([a.tounicode() for a in self.screen.GetRawScreen()])
@@ -326,7 +328,7 @@ class CrawlGame(object):
             time.sleep(1)
             self.stdscr.refresh()
             return None, '', 0, (-1, -1)
-        
+
         # Find ennemies
         direction_to_go = 's'
         ennemy_dist = 999
@@ -342,7 +344,7 @@ class CrawlGame(object):
                         pos = (y, x)
         return direction_to_go, symbol, ennemy_dist, pos
 
-        
+
     def parse_stats(self):
         ecran = self.extract_vision()
 
@@ -358,7 +360,7 @@ class CrawlGame(object):
         except:
             print('Unable to parse stats : %s\r' % sys.exc_info()[0])
 
-       
+
     def get_near_ennemies(self):
         ecran = self.extract_vision()
         lignes = ecran.splitlines()[11:16] # Ne prendre que les lignes 12 a 17, contenant des ennemis
@@ -372,18 +374,9 @@ class CrawlGame(object):
 def main(stdscr):
     print('Connecting to server...\r')
     stdscr.nodelay(True)
-    le_jeu = CrawlGame(stdscr)
+    spawn = init_local_spawn("Bobby")
+    le_jeu = CrawlGame(stdscr, spawn)
     print('Connected\r')
-    stdscr.refresh()
-    while u'Not logged in' not in le_jeu.extract_vision():
-        time.sleep(1)
-    logging_ret = le_jeu.log_into_game()
-    print('Logged.\r')
-    stdscr.refresh()
-    perso_cree = le_jeu.init_play_game()
-    if perso_cree != -1:
-        print('Character created!\r')
-    print('Character generation passed\r')
     stdscr.refresh()
     # Be sure that we're not on the stale screen
     while u'some stale' in le_jeu.extract_vision():
@@ -391,7 +384,7 @@ def main(stdscr):
     le_jeu.jouer()
     print('Quitting...\r')
     stdscr.refresh()
-    le_jeu.close()
+    spawn.terminate()
 
 
 if __name__ == '__main__':
