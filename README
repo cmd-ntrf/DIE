@@ -1,7 +1,16 @@
 DIE - Dungeon Intelligently Escaped
 -----------------------------------
 
-Remarks: 
+How to launch
+-------------
+
+Local :
+
+export TERM=vt100
+python ai.py
+
+Remarks
+--------
 
 1. If it hangs, kill it with:
 ps aux | grep python | grep "ai.py" | awk '{print $2}' | xargs kill -9
