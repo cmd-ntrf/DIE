@@ -34,7 +34,7 @@ UNWALKABLE = ['#', # Wall
               ]
 
 
-class character(object):
+class Character(object):
     health = -1
     maxhealth = -1
     magic = -1
@@ -45,22 +45,22 @@ class NotFoundOurselves(Exception):
     pass
 
 
-class crawlgame(object):
+class CrawlGame(object):
     def __init__(self, in_scr):
         self.gamehdl = paramiko.SSHClient()
         self.gamehdl.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.gamehdl.connect(hostname='crawl.akrasiac.org', port=22, username='joshua', password='joshua', timeout=10)
         self.chan = self.gamehdl.invoke_shell()
         # Initialize the character variables
-        self.char = character()
+        self.char = Character()
         # Initialize virtual terminal emulation
         self.screen = TermEmulator.V102Terminal(24,100)
         self.stdscr = in_scr
         time.sleep(SLEEP_BETWEEN_ACTIONS)
-       
+
     def __del__(self):
         self.close()
-        
+
     def close(self):
         self.gamehdl.close()
 
@@ -372,7 +372,7 @@ class crawlgame(object):
 def main(stdscr):
     print('Connecting to server...\r')
     stdscr.nodelay(True)
-    le_jeu = crawlgame(stdscr)
+    le_jeu = CrawlGame(stdscr)
     print('Connected\r')
     stdscr.refresh()
     while u'Not logged in' not in le_jeu.extract_vision():
