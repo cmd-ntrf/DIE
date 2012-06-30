@@ -186,7 +186,7 @@ class CrawlGame(object):
                 self.statemachine = 'attack'
             elif ("ungry" in self.screen or "tarving" in self.screen): # Pas de lettre initiale pour matcher Near starving et Starving
                 self.statemachine = 'manger'
-            elif "Done exploring." in history or "Partly explored, can't reach some items" in history:
+            elif "Done exploring." in history or "Partly explored, can't reach some places" in history:
                 self.statemachine = 'deeper'
             elif '%' in "".join(self.extract_map()[0]) and \
                 wanted_food_dir != 's' and \
