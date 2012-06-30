@@ -1,8 +1,21 @@
 DIE - Dungeon Intelligently Escaped
 -----------------------------------
 
-Remarks: If it hangs, kill it with:
+How to launch
+-------------
+
+Local :
+
+export TERM=vt100
+python ai.py
+
+Remarks
+--------
+
+1. If it hangs, kill it with:
 ps aux | grep python | grep "ai.py" | awk '{print $2}' | xargs kill -9
+
+2. If the intelligence go crazy, press any key and you will be able to pursue in interactive mode.
 
 ToDo
 ----
@@ -13,5 +26,5 @@ ToDo
 Requirements
 ------------
 * Python >=2.6
-* Paramiko (easy_install/pip paramiko)
+* pexpect (easy_install/pip paramiko)
 
