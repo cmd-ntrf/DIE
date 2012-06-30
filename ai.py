@@ -212,8 +212,9 @@ class CrawlGame(object):
                 self.menu('e')
                 if "You aren't carrying any food." in self.screen.splitlines()[-2]:
                     test_bouffe = False
-                elif "Eat a chunk" in self.screen.splitlines()[-2]:
+                elif "Eat a chunk" in self.screen.splitlines()[-2] or "Eat a rotting chunk" in self.screen.splitlines()[-2]:
                     self.action("y")
+
                 else:
                     # Eat the first item from our stash
                     food_index = self.screen.splitlines()[2].strip()[0]
