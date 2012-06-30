@@ -20,7 +20,7 @@ from lib import TermEmulator
 
 FORCE_REFRESH = 10
 BUFF_SIZE = 9999
-SLEEP_BETWEEN_ACTIONS = 0
+SLEEP_BETWEEN_ACTIONS = 0.05
 SLEEP_BETWEEN_REFRESH = 0
 
 DEBUG = True
@@ -95,7 +95,7 @@ class CrawlGame(object):
         # Initialize the character variables
         self.char = Character()
         # Initialize virtual terminal emulation
-        self.screen = TermEmulator.V102Terminal(24, 80)
+        self.term = TermEmulator.V102Terminal(24, 100)
         self.stdscr = in_scr
         self.spawn = spawn
         time.sleep(SLEEP_BETWEEN_ACTIONS)
@@ -112,13 +112,22 @@ class CrawlGame(object):
         else:
             return None
 
+    def action(self, action):
+        self.spawn.send(action)
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
+        # Refresh screen before extracting
+        self.spawn.send('\x12')
+        time.sleep(SLEEP_BETWEEN_ACTIONS)
+        self.screen = self.extract_vision()
+
     def jouer(self):
         # Delay lorsqu'on part
         time.sleep(SLEEP_BETWEEN_REFRESH)
         ticks = 0
         test_bouffe = False
 
-        GetCharColor = self.screen.GetRendition
+        GetCharColor = self.term.GetRendition
+        self.screen = self.extract_vision()
 
         while True:
             # Refresh screen
@@ -128,20 +137,13 @@ class CrawlGame(object):
                 self.spawn.interact()
                 return
 
-            if ticks % FORCE_REFRESH:
-                # Envoyer un force refresh
-                self.spawn.send('\x12')
-                test_bouffe = True
-            time.sleep(SLEEP_BETWEEN_ACTIONS)
-            ecran = self.extract_vision()
-
             # Handling Debug
             if DEBUG:
                 with codecs.open('log.txt', 'ab', "utf-8") as hdl:
                     hdl.write('\r\n'+u'-'*80)
-                    hdl.write(ecran)
+                    hdl.write(self.screen)
                 print('\r' + '-'*80 + '\r')
-                print(ecran+'\r')
+                print(self.screen+'\r')
 
             # Get character stats
             self.parse_stats()
@@ -157,12 +159,12 @@ class CrawlGame(object):
 
             # Pump rare (level up) or too much events
             if "--more--" in "".join(self.extract_history()):
-                self.spawn.send(' ')
+                self.action(' ')
                 continue
 
             # Handling of level ups
-            if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.extract_vision().splitlines()[-2]:
-                self.spawn.send('s')
+            if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.screen.splitlines()[-2]:
+                self.action('s')
                 continue
 
             # The Emotional Case
@@ -175,7 +177,7 @@ class CrawlGame(object):
             #ennemies = self.get_near_ennemies()
             #if len(ennemies) > 0:
                 self.statemachine = 'attack'
-            elif ("ungry" in self.extract_vision() or "tarving" in self.extract_vision()) and test_bouffe: # Pas de lettre initiale pour matcher Near starving et Starving
+            elif ("ungry" in self.screen or "tarving" in self.screen) and test_bouffe: # Pas de lettre initiale pour matcher Near starving et Starving
                 self.statemachine = 'manger'
             elif "Done exploring." in "".join(self.extract_history()):
                 self.statemachine = 'deeper'
@@ -195,49 +197,41 @@ class CrawlGame(object):
                 # On determine par ou il faut aller pour tuer l'ennemi le plus proche
                 wanted_direction, symb, dist, pos = self.nearest_symbol_direction(ennemy_symbols)
                 print("on veut aller chercher l'ennemi [%s] vers %s\r" % (symb, wanted_direction))
-                self.spawn.send(wanted_direction)
+                self.action(wanted_direction)
             elif self.statemachine == 'manger':
-                self.spawn.send('e')
-                time.sleep(0.3)
-                if "You aren't carrying any food." in self.extract_vision().splitlines()[-2]:
+                self.action('e')
+                if "You aren't carrying any food." in self.screen.splitlines()[-2]:
                     test_bouffe = False
                 else:
-                    self.spawn.send(self.extract_vision().splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
+                    self.action(self.screen.splitlines()[2].strip()[0]) # Prendre la premiere bouffe du coin
             elif self.statemachine == 'chunker_bouffe':
                 # On mange + bouffe le corps!
                 wanted_direction, symb, distance, pos = self.nearest_symbol_direction('%')
                 if distance == 1:
-                    self.spawn.send('%sce' % wanted_direction)
-                    time.sleep(0.3)
-                    if "(ye/n/q/i?)" in self.extract_vision().splitlines()[-2]:
-                        while "(ye/n/q/i?)" in self.extract_vision().splitlines()[-2]:
-                            self.spawn.send('y')
-                            time.sleep(0.3)
+                    self.action('%sce' % wanted_direction)
+                    if "(ye/n/q/i?)" in self.screen.splitlines()[-2]:
+                        while "(ye/n/q/i?)" in self.screen.splitlines()[-2]:
+                            self.action('y')
                     else:
-                        self.spawn.send('\x1bg') # C'est peut-être un skelette! on le prend aussi!
+                        self.action('\x1bg') # C'est peut-être un skelette! on le prend aussi!
                 else:
-                    self.spawn.send(wanted_direction)
+                    self.action(wanted_direction)
             elif self.statemachine == 'deeper':
                 # TODO: Dropper tous les skelettes...
                 # TODO: if outside dungeon...
                 print("We're going deeper!!!\r")
-                self.spawn.send("G>")
-                time.sleep(SLEEP_BETWEEN_ACTIONS*3)
+                self.action("G>")
             elif self.statemachine == 'go_random':
                 # TODO: Do something more logical...
-                self.spawn.send(random.sample(['h', 'j', 'k', 'l', 'u', 'y', 'n', 'b'], 1)[0])
-                time.sleep(SLEEP_BETWEEN_REFRESH)
+                self.action(random.choice(['h', 'j', 'k', 'l', 'u', 'y', 'n', 'b']))
             else:
                 # Default state - exploration
                 if float(self.char.health)/float(self.char.maxhealth) < 0.55:
                     if DEBUG:
                         print('Healing self\r')
-                    self.spawn.send('5')
-                    time.sleep(SLEEP_BETWEEN_ACTIONS)
+                    self.action('5')
                     continue
-                self.spawn.send('o')
-                # attendre un peu que tout ait bien...
-                time.sleep(SLEEP_BETWEEN_REFRESH)
+                self.action('o')
             ticks += 1
 
     def extract_vision(self):
@@ -249,22 +243,22 @@ class CrawlGame(object):
         while not self.spawn.eof():
             #time.sleep(0.5)
             try:
-                buffer_ += self.spawn.read_nonblocking(BUFF_SIZE, timeout=0)
+                buffer_ += self.spawn.read_nonblocking(BUFF_SIZE, timeout=0.05)
             except pexpect.TIMEOUT:
                 break
             #time.sleep(0.2)
-        self.screen.ProcessInput(buffer_.decode('utf-8'))
-        ss_ecran = "\r\n".join([a.tounicode() for a in self.screen.GetRawScreen()])
+        self.term.ProcessInput(buffer_.decode('utf-8'))
+        ss_ecran = "\r\n".join([a.tounicode() for a in self.term.GetRawScreen()])
         return ss_ecran
 
     def extract_map(self):
-        ecran = self.extract_vision()
-# Redo...
-        ecran_rendition = self.screen.GetRawScreenRendition()
+        ecran = self.screen
+        # Redo...
+        ecran_rendition = self.term.GetRawScreenRendition()
         return ["".join(a) for a in zip(*zip(*ecran.splitlines()[0:17])[:34])], [[b & 0x0000ff00 >> 8 for b in a] for a in zip(*zip(*ecran_rendition[0:17])[:34])]
 
     def extract_history(self):
-        ecran = self.extract_vision().splitlines()
+        ecran = self.screen.splitlines()
         if ecran == None or len(ecran) < 1:
             return []
         return ecran[-7:]
@@ -287,7 +281,7 @@ class CrawlGame(object):
         our_pos = (-1, -1)
         for y, outy in enumerate(map):
             for x, outx in enumerate(outy):
-                if map[y][x] == '@' and self.screen.GetRendition(y,x) == (64L, 0, 0):
+                if map[y][x] == '@' and self.term.GetRendition(y,x) == (64L, 0, 0):
                     our_pos = (y, x)
                     # No break since there can be ennemies as @
         if our_pos == (-1, -1):
@@ -355,7 +349,7 @@ class CrawlGame(object):
 
 
     def parse_stats(self):
-        ecran = self.extract_vision()
+        ecran = self.screen
 
         # Extract health and magic
         health_re = re.compile("Health: *(\d+)/(\d+)")
@@ -371,7 +365,7 @@ class CrawlGame(object):
 
 
     def get_near_ennemies(self):
-        ecran = self.extract_vision()
+        ecran = self.screen
         lignes = ecran.splitlines()[11:16] # Ne prendre que les lignes 12 a 17, contenant des ennemis
         # Ne prendre que les colonnes 35+, contenant la liste des ennemis.
         return ["".join(a).strip() for a in zip(*zip(*lignes)[34:]) if "".join(a).strip() != '']
