@@ -177,13 +177,16 @@ class CrawlGame(object):
             wanted_food_dir, symb_food, dist_food, pos_food = self.nearest_symbol_direction('%')
             print('Position de la bouffe: %s\r' % str(pos_food))
             print('Couleur de la bouffe: %s\r' % str(GetCharColor(pos_food[0], pos_food[1])))
+
+            history = "".join(self.extract_history())
+
             if wanted_attack_dir != 's':
             #ennemies = self.get_near_ennemies()
             #if len(ennemies) > 0:
                 self.statemachine = 'attack'
             elif ("ungry" in self.screen or "tarving" in self.screen) and test_bouffe: # Pas de lettre initiale pour matcher Near starving et Starving
                 self.statemachine = 'manger'
-            elif "Done exploring." in "".join(self.extract_history()):
+            elif "Done exploring." in history or "Partly explored, can't reach some items" in history:
                 self.statemachine = 'deeper'
             elif '%' in "".join(self.extract_map()[0]) and \
                 wanted_food_dir != 's' and \
