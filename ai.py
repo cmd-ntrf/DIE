@@ -169,7 +169,7 @@ class CrawlGame(object):
 
             # Handling of level ups
             if "Increase (S)trength, (I)ntelligence, or (D)exterity?" in self.screen.splitlines()[-2]:
-                self.action('s')
+                self.menu('s')
                 continue
 
             # The Emotional Case
