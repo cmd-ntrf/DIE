@@ -180,11 +180,11 @@ class CrawlGame(object):
 
             history = "".join(self.extract_history())
 
+
+
             if wanted_attack_dir != 's':
-            #ennemies = self.get_near_ennemies()
-            #if len(ennemies) > 0:
                 self.statemachine = 'attack'
-            elif ("ungry" in self.screen or "tarving" in self.screen) and test_bouffe: # Pas de lettre initiale pour matcher Near starving et Starving
+            elif ("ungry" in self.screen or "tarving" in self.screen): # Pas de lettre initiale pour matcher Near starving et Starving
                 self.statemachine = 'manger'
             elif "Done exploring." in history or "Partly explored, can't reach some items" in history:
                 self.statemachine = 'deeper'
@@ -212,10 +212,12 @@ class CrawlGame(object):
                 self.menu('e')
                 if "You aren't carrying any food." in self.screen.splitlines()[-2]:
                     test_bouffe = False
+                elif "Eat a chunk" in self.screen.splitlines()[-2]:
+                    self.action("y")
                 else:
                     # Eat the first item from our stash
                     food_index = self.screen.splitlines()[2].strip()[0]
-                    self.menu(food_index)
+                    self.action(food_index)
             elif self.statemachine == 'chunker_bouffe':
                 # On mange + bouffe le corps!
                 wanted_direction, symb, distance, pos = self.nearest_symbol_direction('%')
